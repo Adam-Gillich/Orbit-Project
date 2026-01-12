@@ -1,0 +1,99 @@
+{
+    "spec_version": "v1.6",
+    "identifier": "OrbitProject-RSS",
+    "name": "OrbitProject-RSS",
+    "abstract": "A list of modules installed on the RSS-RO instance",
+    "author": "Gillich Ádám",
+    "version": "2026.01.12.09.17.07",
+    "ksp_version_min": "1.12",
+    "ksp_version_max": "1.12",
+    "license": "MIT",
+    "depends": [
+        {
+            "name": "RealismOverhaul",
+            "version": "v17.24.0.0"
+        },
+        {
+            "name": "MechJeb2",
+            "version": "2.15.1.0"
+        },
+        {
+            "name": "RSSTextures4096",
+            "version": "v18.6.1"
+        },
+        {
+            "name": "Deferred",
+            "version": "1.3.3.0"
+        },
+        {
+            "name": "FilterExtensionsDefaultConfig",
+            "version": "3.2.9.1"
+        },
+        {
+            "name": "kOS-MechJeb2",
+            "version": "0.0.4"
+        },
+        {
+            "name": "KSCSwitcher",
+            "version": "v2.2.0.0"
+        },
+        {
+            "name": "KSPBurst",
+            "version": "v1.5.5.2"
+        },
+        {
+            "name": "MoarFEConfigs",
+            "version": "1.0.5.2"
+        },
+        {
+            "name": "ModularComputerPackageRevived",
+            "version": "2.0.1.2"
+        },
+        {
+            "name": "ProceduralFairings",
+            "version": "1:v6.7.0.0"
+        },
+        {
+            "name": "ProceduralParts",
+            "version": "v2.8.0.0"
+        },
+        {
+            "name": "RealSolarSystem",
+            "version": "v20.1.3.0"
+        },
+        {
+            "name": "ROCapsules",
+            "version": "v2.7.1.0"
+        },
+        {
+            "name": "ROEngines",
+            "version": "v2.16.0.0"
+        },
+        {
+            "name": "ROHeatshields",
+            "version": "v1.3.0.0"
+        },
+        {
+            "name": "ROSolar",
+            "version": "v2.1.2.0"
+        },
+        {
+            "name": "ROTanks",
+            "version": "v2.10.0.0"
+        },
+        {
+            "name": "ROFilterExtensionsConfig",
+            "version": "1.0"
+        },
+        {
+            "name": "ROLoadingImages",
+            "version": "v1.0.0.0"
+        },
+        {
+            "name": "RSS-Icons",
+            "version": "1.0"
+        }
+    ],
+    "release_date": "2026-01-12T22:17:07.7547518+01:00",
+    "kind": "metapackage"
+}
