@@ -1,0 +1,833 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[magyar]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, physics, verbatim, graphicx}
+\usepackage{float}
+
+\usepackage[backend=biber, style=phys]{biblatex}
+\addbibresource{/home/adam/work/LaTeX/Mecha/Orbit project/Orbit_project_conclusion/References.bib}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{titling}
+\usepackage{ragged2e}
+\usepackage{newtxtext}
+\usepackage{newtxmath}
+\justifying
+%\onehalfspacing
+\setlength{\droptitle}{-3cm}
+
+
+\title{Orbitális pályára állás}
+\author{Gillich Ádám}
+\date{\today}
+
+%-------------------------------------------------------------------------------------------
+
+\begin{document}
+\nocite{eaglepubs,Teofilatto,nasaSpecificImpulse,nasaRocketThrust,OrbitalMechanicsByWeber,Stanford,Hohmann,eccenticityWiki,pegas,rssTwr,eccenticityForum,dragGithub,mikeVisViva,OrbitProject,brentq,RD-253,RD-0124,KSP_deltaV_map,RSS_deltaV_map}
+
+\maketitle
+%-------------------------------------------------------------------------------------------
+\section*{Bevezetés}
+Munkám célja az alacsony Föld körüli és Kerbin körüli orbitális pályára (LEO és LKO) álláshoz szükséges 
+$\Delta v$ kiszámítása. A projekt lényegesen változott az eredeti célhoz képest. A programozott röppálya 
+el lett vetve, mert túl új és komplikált, valamint amint kiderült \citeauthor{Teofilatto} munkája kiváló, 
+de nem pontosan erre a célra tervezték. Így a kísérleteknél kézi vagy modok segítségével fél automata 
+irányítást alkalmaztam, az alapján, hogy mi adta a jobb eredményt.\medskip\\
+A dokumentum felépítése:
+\begin{enumerate}
+    \item Elmagyarázom az alapfogalmakat, amik kellenek a megértéshez.
+    \item Egyszerűen elmagyarázom, hogy hogyan állítanak pályára egy rakétát, amit összevetek azzal, amit a 
+    számításaimban használtam.
+    \item Elmagyarázom a Python kódom lényegi részét.
+    \item Bemutatom a kísérlethez használt rakétákat, és a kísérletet. Bemutatom az eredményeket.
+    \item Ezek után kiértékelem, összevetem az eredményeket.
+\end{enumerate}
+A projektben használt és keletkezett anyag minden formáját tőlem telhető legrészletesebben igyekszem 
+feltölteni a \cite{OrbitProject} forrás alatt található GitHub repository-ba.\footnote[1]{A projekt "kódneve" 
+\textit{'Orbit Project'} volt, így ezen a néven is előfordulhat}.
+
+%-------------------------------------------------------------------------------------------
+\section{Fogalomtár}
+
+\begin{itemize}
+    \item \textbf{Orbitális pálya (pálya)} — olyan általánosan ellipszis alakú pálya ami egy égitest körül 
+    helyezkedik el, nem érintve annak felszínét. Kialakításához elsősorban sebességre van szükség, 
+    magasság csak a légkör miatt követelmény. Lehet rá folyamatos szabadesésként is gondolni,
+    ami azért lesz folyamatos, mert olyan sebességgel haladunk a bolygó felszíne felett, hogy kifordul
+    alattunk a bolygó. Így sosem esünk vissza.
+    \item $\mathbf{\Delta v}$ — Egyszerűen úgy lehet rá tekinteni, mint a rakéta üzemanyaga. Hasonló módon, mintha 
+    egy autóban ülve nem a megmaradt liternyi üzemanyagot néznéd meg, hanem azt, hogy hány $km$ utat tud
+    még megtenni. És más autóba átülve nem kell gondolkodni, hogy az autó tulajdonságait tekintve mennyire
+    elég $5\, liter$ benzin, ha tudod, hogy még $50\, km$-t meg tudsz tenni vele. A Tziolkowski egyenletből
+    következik, hogy a rakéta az űrben a sebességét tudja megváltoztatni, és arra a következtetésre lehet
+    jutni, hogy érdemes egy rakéta "üzemanyagát" $m/s$-ban mérni, és a $\Delta v$ pedig az a sebességváltozás,
+    amit a rakéta ideális esetben vákuumban el tud érni. Általában nem is kell foglalkozni azzal,
+    mi van, ha nem ideális esetben vagyunk, de itt pont ez lesz a helyzet.
+    \item \textbf{Gravitációs Forduló} — A pályára állás az a része amikor hagyjuk, hogy a gravitáció fordítsa a rakétát.
+    Azért fordítja, mert ha bedöntjük a rakétát, akkor a gravitáció a sebességvektorral nem lesz párhuzamos, 
+    így azon kívül, hogy annak ellentart, még forgatja is azt.
+    \item \textbf{Hohmann módszer} — Egy nagyon hatékony módszer a $\Delta v$ kiszámítására, amikor egyik 
+    körpályáról egy másikra megyünk. De ennek két fele van, ugyanis az űrben nem tudjuk egy ponton megemelni a 
+    pályánkat, így megemeljük egy ponton, majd fölmegyünk az \textit{Apoapsis}-ra (lásd lejjebb) és ott
+    is gyorsítunk egyet, így lesz újra körpályánk. Ebből nekünk az utóbbi eset kell majd.
+    \item \textbf{Apoapsis} — a pálya legmagasabb pontja (általánosan)
+    \item \textbf{Periapsis} — a pálya legalacsonyabb pontja (általánosan)
+    \item \textbf{Prograde} — haladási irány
+    \item \textbf{liftoff} — a rakéta elengedésének pillanata
+    \item \textbf{TWR} — Tolóerő–Tömeg arány, a \textit{Thrust-to-Weight Ratio} rövidítése
+    \item $\mathbf{I_{sp}}$ — A specifikus impulzus, tolóerő osztva a súllyal ($I/mg$) \cite{nasaSpecificImpulse},
+    ez egy hajtóműre jellemző mennyiség, minden hajtóműnek van sajátja. A legegyszerűbben úgy lehet rá 
+    gondolni mint a hajtómű teljesítménye, hatékonysága. A nagyobb $I_{sp}$ jobb.
+    \item $\mathbf{R}$ — a bolygó sugara
+    \item $\mathbf{\mu}$ — $GM$, ahol $G$ a gravitációs állandó, $M$ pedig a bolygó tömege, neve 
+    \textit{standard gravitációs paraméter}, minden égitestnek van sajátja. Ezt a jelölést bevezetve kicsit 
+    rövidebbé, és egyszerűbben érthetővé válnak a formulák.
+    \item \textbf{Analitikus megoldás} — Egy olyan megoldás, ami pontosan adja vissza az értéket
+    \item \textbf{Numerikus megoldás} — Ha a problémának nincs analitikus megoldása, vagy nehéz megtalálni az analitikus megoldást,
+    a közelítő számítások mellett (például: Taylor-sorfejtés) numerikus módszerrel is célt lehet érni. 
+    A numerikus módszerek nem adnak pontos eredményt, de ismerve a mérések pontatlanságát és a rendszert befolyásoló faktorokat,
+    az eredmény kellően pontos lehet. A legtöbb módszernél meg lehet adni egy $\delta$ vagy $\varepsilon$ paramétert,
+    hogy mennyire közelítse meg a valós megoldást.
+    \item \textbf{KSP, és RSS} — ez talán a legfontosabb. A kísérleteket a Kerbal Space Program alap és modolt
+    változatában végeztem el, amikor azt írom KSP akkor az alap játékra gondolok, és amikor azt írom RSS akkor
+    a modoltra. RSS onnan jön hogy az egyik fő mod a \textit{Real Solar System}.
+    
+\end{itemize}
+
+%-------------------------------------------------------------------------------------------
+\section{Elméleti háttér}
+
+\subsection{Hogyan működik egy rakéta fellövése?}
+Ha körpályára akarunk állni a Föld körül, akkor 3+1 lépésből áll.
+\begin{enumerate}
+    \item Függőleges emelkedés: A rakéta \textit{liftoff} után nem csinál semmit csak emelkedik egy bizonyos
+    pontig.\footnotemark[2]
+    \item Gravitációs forduló: A rakéta egy bizonyos, jól optimalizált szöggel bedől, és azután követi a 
+    \textit{Prograde} irányát. Hagyja, hogy a gravitáció segítsen a fordulásban, amíg a légkör hatása 
+    elhanyagolhatóvá nem válik.
+    \item Irányított szakasz: Ha a légkör már elhanyagolható, a rakétát átadják egy algoritmusnak, ami 
+    valós időben korrigálja a pályát, és nagy valószínűleg hamar áttér közel vízszintes repüléshez, azért 
+    hogy sebességet gyűjtsön az orbitális pálya kialakításához.\\ A \cite{pegas} forrásban \citeauthor{pegas}
+    az űrsikló dokumentációi alapján készített egy ilyen algoritmust pályára álláshoz.\footnotemark[3]
+    \item Siklás\footnotemark[4] és körpálya: Ha megtette az algoritmus amit tudott, akkor vár, ez a siklási
+    szakasz. Addig vár amíg el nem éri a rakéta az \textit{Apoapsis}-t, ott újra begyújtja a hajtóművét és 
+    kialakítja a körpályát.
+\end{enumerate}
+\footnotetext[2]{Meghatározható sebességben, időben, magasságban, és talán másban is de ezek a gyakori 
+kézenfekvő opciók.}
+\footnotetext[3]{Amit nekem sajnos nem sikerült működésbe hozzak.}
+\footnotetext[4]{\textit{Coasting Flight}}
+
+%-------------------------------------
+\subsection{A számítások fizikai háttere}
+\subsubsection*{Változások}
+Eredetileg a \cite{eaglepubs} forrás 57. fejezetében található módszert terveztem használni a $\Delta v_{total}$ 
+kiszámítására, ami még mindig egy lehetőség, de én végül eltértem tőle. Majd később részletezem a 
+pontos módszert.\\
+Az \cite{eaglepubs} forrásban szereplő módszer:
+\begin{equation}
+    \Delta v_{total} = \Delta v_K + \Delta v_U + \Delta v_g + \Delta v_d + \Delta v_{steer} - \Delta v_{lat}
+\end{equation}
+
+\bigskip
+Az általam írt Python kód és a hozzá tartozó fizika erősen összekapcsolódik, de megpróbálom a lehető 
+legjobban szétválasztani őket.
+
+%-------------------------------------
+\subsubsection*{\citeauthor{Teofilatto} munkájának célja}
+\citeauthor{Teofilatto} munkájának a célja egy analitikus megoldás volt a \textit{Gravitációs Fordulóra}, 
+ehhez néhány egyszerűsítést kénytelenek voltak bevezetni. Például, hogy a légellenállás elhanyagolódik, 
+de később látjuk majd, hogy nem is olyan nagy mértékű. Valamint, hogy a tolóerő-tömeg arány (\textit{TWR}) 
+egy átlagos értékkel leírható. Ami azért nem pontos, mert a hajtómű tolóereje nem konstans, és a tömeg sem. 
+A \cite{nasaRocketThrust} forrás alapján a tolóerő, ahogy a nyomás csökken, úgy növekszik, míg a tömeg 
+folyamatosan fogy. Így a \textit{TWR} folyamatosan nő. Ezt bizonyos körülmények közt akár egy konstans 
+értéken lehetne tartani amennyiben a hajtómű tolóereje manuálisan is állítható.
+
+%-------------------------------------
+\subsubsection*{A rakéta összes $\Delta v$-jének kiszámítása}
+A két fokozat összesen kifejthető $\Delta v$-je kiszámítható az \cite{eaglepubs} és \cite{Teofilatto} forrásban is
+ található Tziolkowski formula egy változatával. A két fokozatnak külön kell kiszámítani a $\Delta v$-jét, majd 
+összeadni őket ahhoz, hogy megtudjuk, mennyi $\Delta v$ kifejtésére képes a rakéta.
+\begin{equation}
+    \Delta V_{\mathrm{Tz}} = g_0\, I_{\mathrm{sp}\,k}\, \ln\!\left(\frac{M_k}{M_{kf}}\right)
+\end{equation}
+Ahol a $g_0$ a gravitációs gyorsulás föld közelben, $I_{\mathrm{sp}\,k}$ a hajtómű specifikus impulzusa, $M_k$ a 
+fokozat teljes tömege\footnotemark[5], $M_{kf}$ pedig vég tömeg.\footnotemark[5]
+\bigskip
+
+\footnotetext[5]{$M_k$: üzemanyag, struktúra, hasznos teher; $M_{kf}$: struktúra,
+ hasznos teher (száraztehernek is nevezik)}
+
+%-------------------------------------
+\subsubsection*{A mérés logikája}
+Maga a cél a Föld körül $250\, km$, és $120\, km$ magasságú körpályát kialakítani a lehető legkevesebb elhasznált $\Delta v$-vel.
+Ezt elnevezem $\Delta v_{total}$-nak.\\
+\smallskip
+
+A rakéta képzeletbeli útja:
+\begin{itemize}
+    \item Emelkedünk
+    \item Gravitációs forduló, \citeauthor{Teofilatto} analitikus módszere alapján
+    \item Az \textit{Apoapsis} eléri a 250 km-t
+    \item A kialakult \textit{Apoapsis} és \textit{Periapsis} segítségével meghatározzuk, hogy Hohmann 
+    módszerrel mennyi $\Delta v$ körpályává tenni a jelenlegi ellipszisünket.
+    \item Összeadjuk a fokozatok által elhasznált $\Delta v$-t, meghatározva a $\Delta v_{total}$-t
+\end{itemize}
+A feltevés az, hogy lesz egy ideális pálya $\gamma_f$ vég-röppályaszöggel, $v(z_{2f})$ sebességgel, 
+és $R_{F\ddot{o}ld}+h(z_{2f})$ sugárral aminek az \textit{Apoapsis}-a éppen $250\, km$ lesz. És az ezt követő 
+Hohmann módszer után a $\Delta v_{total}$ a minimum lesz.\\
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1 \textwidth]{Pictues/3_stages (1).png}
+    \caption{A röppálya elméleti ábrája}
+    \label{fig:trajecroty}
+\end{figure}
+
+
+\citeauthor{Teofilatto} módszere erre nem ad választ, viszont ki tudom számolni, hogy a hajtóművek égetése után 
+végül mekkora sebességgel, $v(z_{2f})$ megyek milyen magasságban, $h(z_{2f})$, a végső szög $z_{2f}$ függvényében,
+ami a $\gamma_f$, a vég-röppályaszög, egy ügyesen átalakított formája.\footnotemark[6]
+\smallskip
+
+\footnotetext[6]{Az indíték ilyen módú jelölésére és az átalakítás módszerére a \cite{Teofilatto} forrás 
+7. oldalán található válasz.}
+
+A sebesség a mozgás végén:
+\begin{equation}
+    v(z_{2f}) = A_2\, z_{2f}^{\bar{n}- 1}\, (1 + z_{2f}^2)
+\end{equation}
+
+A magasság a mozgás végén:
+\begin{equation}
+h(z_{2f}) = h(z_{20}) + \frac{A_2^2}{g}   \left[ 
+                                    \frac{z^{2\bar n-2}}{2\bar n-2} - \frac{z^{2\bar n+2}}{2\bar n+2} 
+                                \right]_{z_{20}}^{z_{2f}}
+\end{equation}
+Ahol $\bar{n}$ az átlagos \textit{TWR}, és $A_2$ nincs megnevezve de abból ahogy használva van úgy 
+lehetne elnevezni, mint egy röppálya skálázó paraméter, ami mindig egy a fokozatra jellemző.
+\medskip
+
+\citeauthor{Teofilatto} azzal számoltak, hogy $\gamma_f$ a mozgás végén ismert. De mivel a mi helyzetünkben 
+nem ismert, ezért a problémát numerikusan kell megoldani.
+
+A módszerükkel kiszámítható a $\Delta v_g$, tehát az a $\Delta v$ amit a gravitáció miatt 
+elvesztünk.
+\begin{equation}
+    \Delta v_g = \Delta v_{Tz1} + \Delta v_{Tz2} - v(z_{2f})
+\end{equation}
+Tehát a két fokozat által összesen elhasznált $\Delta v$ mínusz a ténylegesen elért sebesség.
+\medskip
+
+De még kellenek a pálya adatok.\\
+A két fontos adat a Hohmann módszer szempontjából az \textit{Apoapsis} és a \textit{Periapsis}\\
+Ha megvan az excentricitás akkor a \cite{OrbitalMechanicsByWeber} forrás alapján kettőt úgy számoljuk ki, hogy:
+\begin{equation}
+    r_{Ap} = a(1 + e); \qquad r_{Pe} = a(1 - e)
+\end{equation}
+Ahol $a$ a félnagytengely és $e$ az excentricitás.
+\smallskip
+
+Szintén a \cite{OrbitalMechanicsByWeber} forrásból a félnagytengely a következő módon felírható:
+\begin{equation}
+    a = - \frac{\mu}{2 E}
+\end{equation}
+Ahol $E$ a mechanikai energia.
+
+%-------------------------------------
+\subsubsection*{Excentricitás vektor}
+A \cite{eccenticityWiki} forrásból megállapítható, hogy az excentricitás vektor a következő:
+\begin{equation}
+    \mathbf{e} = \frac{\mathbf{v} \times \mathbf{L}}{\mu} - \frac{\mathbf{r}}{r}, \qquad
+    \mathbf{L} = \mathbf{r} \times \mathbf{v}
+\end{equation}
+Négyzetezzük:
+\begin{align*}
+    e^2 = \left( \frac{\mathbf{v} \times \mathbf{L}}{\mu} - \frac{\mathbf{r}}{r} \right)^2, \qquad (a - b)^2\\
+        = \frac{(\mathbf{v} \times \mathbf{L})^2}{\mu^2} - 2 \cdot \frac{1}{\mu} \frac{\mathbf{r}}{r} \cdot (\mathbf{v} \times \mathbf{L}) + 1, 
+\end{align*}
+\[
+    \mathbf{v} \bot \mathbf{L},\qquad \mathbf{r} \cdot (\mathbf{v} \times \mathbf{L}) = 
+    \mathbf{r} \cdot (\mathbf{v} \times (\mathbf{r} \times \mathbf{v})) = 
+    (\mathbf{r} \times \mathbf{v}) \cdot (\mathbf{r} \times \mathbf{v}) =
+    (\mathbf{r} \times \mathbf{v})^2 = L^2
+\]
+\begin{equation*}
+    e^2 = \frac{v^2 L^2}{\mu^2} - \frac{2 L^2}{\mu r} + 1 
+        = 1 + \frac{L^2}{\mu^2} \left( v^2 - \frac{2\mu}{r} \right)
+        = 1 + \frac{L^2}{\mu^2}\, 2 E
+\end{equation*}
+Bevezetve az $E = \frac{v^2}{2} - \frac{\mu}{r}$-t az excentricitás vektor nagysága a következő:
+\begin{equation}
+    e = \sqrt{1 + \frac{2 E\, L^2}{\mu^2}} 
+\end{equation}
+Ahol $E$ a mechanikai energia:
+\begin{equation*}
+    E = \frac{v^2}{2} - \frac{\mu}{r}
+\end{equation*}
+És $L$ pedig a perdület:
+\begin{equation*}
+    L = \mathbf{r} \times \mathbf{v} = r\, v \cos\gamma
+\end{equation*}
+\medskip
+
+\noindent
+Ez a mi esetünkre átalakítva:
+\begin{equation}
+    E = \frac{v(z_{2f})^2}{2} - \frac{\mu}{R + h(z_{2f})}, \qquad L = \big[R + h(z_{2f})\big]\ v(z_{2f})\, \cos\gamma_f
+\end{equation}
+
+Miután megvannak a pályaadataink még mindig ellipszis pályán keringünk, amit körpályává kell alakítani.
+Ehhez a Hohmann módszert alkalmazzuk, a \cite{Hohmann} forrás alapján:
+\begin{equation}
+    \Delta v_H = \sqrt{\frac{\mu}{r_{Pe}}} \left( \sqrt{\frac{2 r_{Ap}}{r_{Ap} + r_{Pe}}} -1 \right)
+\end{equation}
+
+\medskip
+
+Nagyon jó mostmár meg tudjuk állapítani a pályaadatainkat a mozgás végi adatokból, és körpályára tudunk állni.\\
+Tehát mégegyszer: A feltevés az, hogy lesz egy ideális pálya $\gamma_f$ vég-röppályaszög, 
+$v(z_{2f})$ sebességgel, és $R+h(z_{2f})$ sugárral aminek az \textit{Apoapsis}-a éppen 250 km lesz. 
+És az ezt követő Hohmann módszer után a $\Delta v_{total}$ a minimum lesz.
+\medskip
+
+Ehhez numerikusan optimalizálni kell öt paramétert:\\
+\indent $\Delta v_{total}$, $r_{Ap}$, $\gamma_f$, $z_{20}$, $M\%$-et.\\
+\indent $\Delta v_{total}$, $r_{Ap}$, $\gamma_f$-val már találkoztunk, $z_{20}$ a röppályaszög az első 
+fokozat leválasztásánál $M\%$ pedig abból következik, hogy nem minden üzemanyagunkat akarjuk elégetni 
+csak azt amennyi kell. A név abból származik hogy ez tényleg egy százalék tehát például 56.66\%, ebben 
+az esetben a második fokozat 56.66\%-át használtuk fel.
+
+%---------------------------------------------------------------
+\subsection{Numerikus számítási folyamat}
+Az számítási folyamatot szinte teljesen én készítettem, apukám, Gillich Péter segédkezett a numerikus 
+optimalizációban\footnotemark[7].\\
+
+A mérés módja az (1) egyenletben leítrakból úgy változott, hogy most azt mérem mennyi $\Delta v$ lett elhasználva, 
+nem pedig tételesen kiszámolom mennyi lenne a $\Delta v_{total}$.
+
+%-------------------------------------
+\subsubsection*{Kis kiegészítés}
+Azzal, hogy tudjuk állítani a $M\%$-et, két dolog fog változni \textbf{1) $M_{2f}$},\, \textbf{2) $t_{b2}$}, tehát
+a második fokozat vég tömege és az idő ameddig égetjük az üzemanyagot.\\
+$M_{2f}$ kilogikázható:
+\begin{equation*}
+    M_{\ddot{u}} = M_{20} - M_{2\, \mathrm{dry}}
+\end{equation*}
+
+\begin{equation*}
+    M_{\ddot{u}\, maradt} = M_{\ddot{u}} [1 - (M\% / 100)]
+\end{equation*}
+
+\begin{equation}
+    M_{2f} = M_{2\, \mathrm{dry}} + M_{\ddot{u}\, maradt}
+\end{equation}
+Ahol $M_{\ddot{u}}$ az üzemanyag tömege, $M_{2\, \mathrm{dry}}$ a száraz tömeg, $M_{2f}$ pedig a vég tömeg.\\
+
+\medskip
+\noindent
+A másik a $t_{b2}$ azaz a második fokozat kiégésének ideje. A \cite{nasaSpecificImpulse} és \cite{nasaRocketThrust}
+forrásból meg lehet határozni $\dot{m}$-t, ebből következik:
+\begin{equation}
+    t_{b2} = \frac{M_{\ddot{u}\, haszn\acute{a}lt }}{\dot{m}} = 
+    \frac{M_{20} - M_{2f}}{F_{\text{Tol\'oer\H{o}}} / (g_0\, I_{sp})} = \frac{(M_{20} - M_{2f})\, g_0\, I_{sp} }{F_{\text{Tol\'oer\H{o}}}}
+\end{equation}
+
+\footnotetext[7]{Például a \texttt{find\_max\_not\_NaN} függvény 
+egy pair codinggal készített, erre az esetre szabott rekurzív függvény.}
+
+%-------------------------------------
+\subsubsection*{Numerikus módszerek összefoglalója}
+Az öt paraméter, amit optimalizálni kell: $\Delta v_{total}$, $r_{Ap}$, $\gamma_f$, $z_{20}$, $M\%$\\
+A számítás menete, sorrendben:
+\begin{enumerate}
+    \item Meg kell találni $M\%$-nek azt az intervallumát, ahol még van olyan $\gamma_f$, amivel elérjük a kívánt $r$-t.
+    \item Választunk egy $M\%_i$-t és egy $\gamma_i$-t
+    \item Kiszámoljuk a $\gamma_i$-hez tartozó $z_{20}$, közép röppályaszöget
+    \item Megnézzük, hogy ezzel a $\gamma_i$-vel eléri-e az $r_{Ap}$ a kívánt $r$-t // Ha nem, akkor másik $\gamma_i$
+    \item Ha igen, akkor megnézzük, mennyi a $\Delta v_{total}$ // Kevesebb vagy több
+    \item Választunk egy másik $M\%_i$-t
+\end{enumerate}
+Az optimalizáció végén megkapjuk a minimális $\Delta v$-t, amit el kell használnunk a pályára álláshoz.\\
+
+\begin{figure}[H]
+    \hspace{-2.5cm}\includegraphics[width=1.3 \textwidth]{Pictues/numerical-calc.png}
+    \caption{A számításokat végző program ábrája}
+    \label{fig:num}
+\end{figure}
+
+\subsubsection*{Alkalmazott numerikus módszer típusok}
+\textbf{Brent}: A paraméterek közül kettő ($z_{20}$ és a $r_{Ap}$) a scipy.optimize/\textit{brentq} 
+függvényével lett kiszámítva.\\
+A \textit{brentq} függvény nullára optimalizáláskor lehet használni, ami összetett, de hatékony. Egy biztonságos 
+felező módszert ötvöz inverz kvadratikus extrapolációval.\footnotemark[8]\\
+\indent Ezek közül az $r_{Ap}$ a legkézenfekvőbb, hiszen van egy $r$ amit el akarunk érni, így:
+\begin{equation}
+    f_{Ap} = r - r_{Ap}
+\end{equation}
+Ha ez a különbség 0, akkor megvan az a $\gamma_i$, amivel el lehet érni a kívánt $r$-t.\\
+\smallskip
+
+\footnotetext[8]{A módszer Richard Brent által lett kidolgozva \cite{brentq}}
+
+A másik a $z_{20}$, amit \citeauthor{Teofilatto} számításaiból származik.\\
+A lényeg, hogy létezik olyan $f_{1, 2}$ függvény, ami:
+\begin{align*}
+    t_{b1} = f_1(z_{20})\\
+    t_{b2} = f_2(z_{20})\\
+    \frac{t_{b1}}{t_{b2}} = \frac{f_1}{f_2}
+\end{align*}
+Tehát:
+\begin{equation}
+    f(z_{20}) = \frac{t_{b1}}{t_{b2}} - \frac{f_1}{f_2}
+\end{equation}
+Ha ez a különbség 0, akkor megvan a $\gamma_i$-hez tartozó $z_{20}$ szög.\\
+\smallskip
+
+\textbf{minimize\_scalar}: Maga a $\Delta v_{total}$ nem számítható ki \textit{brentq}-val, minimumot kell keresni, nem 
+zéruspontot. Ezért a scipy.optimize egy másik függvényét hívtuk segítségül: \textit{minimize\_scalar}.
+\smallskip
+
+\textbf{find\_max\_not\_NaN}: Ez a függvény találja meg a $M\%$-nek azt az intervallumát, ahol a 
+$f_{Ap} = 0$ értelmezett. Ez egy külön erre a célra készített függvény, ami a felezőmódszerhez hasonlóan működik,
+de nem zéruspontot keres, hanem az értelmezési tartomány határát.
+\smallskip
+
+\textbf{A megoldások}: $\gamma_f$ és $M\%$ nincs használva ilyen numerikus módszerben, csupán az intervallumukat
+keressük meg numerikusan. Tehát ezek a keresett változók és ha megvan a $\gamma_f$ és $M\%$, akkor megkapom a 
+megoldást, ami a $\Delta v_{total}$.
+
+
+%-------------------------------------
+\subsubsection*{A számítás általánossága}
+Természetesen valamennyire általános ez a megoldás. A két fokozatú rakétákra, amiknek legalább az első fokozat
+egészére szükségük van a pályára álláshoz. \citeauthor{Teofilatto} módszere kiterjeszthető N fokozatra is, és
+a kellő tudással meg lehet azt csinálni, hogy több fokozatból engedjünk állítani felhasznált százalékot.
+De egy általánosítása volt a számításnak, hogy az első fokozatra szükség van. Ennek az indoklása annyi, hogy 
+sem KSP-ben, sem RSS-ben nem volt olyan első fokozat, ami elérni az első kozmikus sebességet a bolygó körül, 
+de lehetne. Vagy éppen három fokozata van, valóságban vannak rá példák.\footnotemark[9]\\
+Illetve nem kizárt hogy ki lehet terjeszteni magas Föld kürüi pályákra is a számítást, de ez már nem tartozik a 
+projekt kereteibe.
+
+\footnotetext[9]{Az indíték az, hogy a hajtóművek $I_{sp}$-je általában 280-350 köré esik. És körülbelül 
+$I_{sp} \cdot 10$\, érdemes egy fokozat $\Delta v$-jét tenni, és ehhez Föld körül három fokozatra van szükség. 
+Ilyen a Proton rakéta család, és a méltán híres Saturn V, és a Soyuz rakéták is.}
+
+%-------------------------------------
+\subsubsection*{Talált hibák a \cite{Teofilatto} forrásban}
+\citeauthor{Teofilatto} munkája lenyűgöző, de nem hibátlan. Ami megnehezítette a munkámat és akár több nappal is 
+hátravetett.\\
+Mivel az én példáim is két fokozatra épülnek, gyorsan le is tekertem a 4. fejezetig (\textit{Analytic Derivation
+ of Launcher Trajectories}). Ahol pont két fokozatos példát ecsetelgetnek. Itt a (20) egyenlet teljesen el van írva.
+ $\bar{n}_{1,2}$ (átlagos \textit{TWR}) össze-vissza van írva, és hiányoznak a zárójelek. 
+\begin{equation}
+t_{b2} = \frac{A_2}{g} \left( \frac{z_{2f}^{\bar{n}_2-1}}{\bar{n}_2-1} + \frac{z_{2f}^{\bar{n}_2+1}}{\textcolor{red}{\bar{n}_1}+1} 
+- \frac{z_{20}^{\bar{n}_2-1}}{\bar{n}_2-1} \textcolor{red}{+} \frac{z_{20}^{\bar{n}_2+1}}{\textcolor{red}{\bar{n}_1}+1} \right) 
+\end{equation}
+Ez a ChatGPT-nek
+rögtön feltűnt, mikor rákérdeztem, hiszen mint arra felhívta a figyelmemet, ez egy Newton-Leibniz tételes 
+kiértékelés eredménye. Mint az megfigyelhető a (26) egyenletben is, ahol 3 fokozatra írnak példát. \\
+És itt szerencsére a (25) egyenletben javítják, amit elírtak.
+ \begin{equation}
+t_{b2} = \frac{A_2}{g} \left[ \left( \frac{z_{2f}^{\bar{n}_2-1}}{\bar{n}_2-1} + \frac{z_{2f}^{\bar{n}_2+1}}{\bar{n}_2+1} \right)
+- \left( \frac{z_{20}^{\bar{n}_2-1}}{\bar{n}_2-1} + \frac{z_{20}^{\bar{n}_2+1}}{\bar{n}_2+1} \right)  \right]
+\end{equation}
+Ahol a $t_{b2}$ a második fokozat kiégésének ideje; $A_2$ nincs megnevezve, de abból, ahogy használva van, úgy 
+lehetne elnevetni, mint egy röppálya skálázó paraméter, ami mindig egy a fokozatra jellemző; $z$ pedig a 
+röppályaszög, $z_{2f}$ a második fokozat kifogyásánál, $z_{20}$ pedig az első fokozat leválasztásánál.\\
+Egy másik hibát szintén ugyanezen a helyen én vettem észre: $f_{1,2}$ meg volt cserélve:
+\begin{equation}
+    \frac{t_{b2}}{t_{b1}} = \textcolor{red}{\frac{f_1}{f_2}}
+\end{equation}
+
+Helyesen az egyenlet:
+\begin{equation}
+    \frac{t_{b2}}{t_{b1}} = \frac{f_2}{f_1}
+\end{equation}
+Egy harmadikat megint a ChatGPT. A $h(z)$ a (14) egyenlettől végig rosszul van írva. Ha megfigyeljük a 8. 
+oldal legalját, akkor ott van a $\partial_z(h)$, amit integrálni kell $z$ szerint, hogy megkapjuk $h(z)$-t.
+Az integrálást elvégezve:
+\begin{equation}
+    \int \frac{dh}{dz} dz =\frac{A^2}{g} \int \left( z^{2\bar n-3} - z^{2\bar n+1} \right) dz
+\end{equation}
+
+\begin{equation}
+h(z) = h(z_0) + \frac{A^2}{g}   \left[ 
+                                    \frac{z^{2\bar n-2}}{2\bar n-2} - \frac{z^{2\bar n+2}}{2\bar n+2} 
+                                \right]_{z_0}^{z_f} 
+\end{equation}
+Náluk a pirosra színezett blokkban tűnt el a kettes:
+\begin{equation}
+h(z) = h(z_0) + \frac{A^2}{g}   \left[ 
+                                    \frac{z^{2\bar n-2}}{2\bar n-2} - \textcolor{red}{\frac{z^{2\bar n+2}}{\bar n+2}} 
+                                \right]_{z_0}^{z_f} 
+\end{equation}
+
+%-------------------------------------------------------------------------------------------
+\section{A kísérletek}
+A kísérletek elvégzéséhez a Kerbal Space Program nevű "játékos szimulátort" használtam.
+Egy alap játékos konfigurációban és egy modokkal megváltoztatott konfigurációban, ami lehetővé tette, hogy a 
+Földön is teszteljem azt, amit kiszámítottam, illetve mindezt igazi hajtóművekkel tegyem.
+
+%-----------------------------------------------------
+\subsection{A rakéták}
+A rakéták pontos számítás szempontjából lényeges adata megtalálható egy YAML fájlban \cite{OrbitProject}
+GitHub repository-ban a Python kód mellett.
+%-------------------------------------
+\subsubsection*{KSP}
+Az alap játékban egy a Gemini programban használtra hajazó rakétát raktam össze.\\
+A fokozatok hajtóművei:
+\begin{enumerate}
+    \item "Bobcat"
+    \item "Cheetah"
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5 \textwidth]{Pictues/kemini.png}
+    \caption{Képek a rakétáról a hangárban.}
+\end{figure}
+
+KSP-ben a kilövőállás hajszálra rajta van az egyenlítőn, így nem kell egyszerűsíteni sem a $\Delta v_{lat}$-ön.
+%-------------------------------------
+\subsubsection*{RSS}
+Itt nem céloztam semmit, amire hasonlítania kéne a rakétának. A hajtóművek orosz gyártásúak, de csak 
+azért, mert azok tűntek a legmegfelelőbbnek.\\
+A fokozatok hajtóművei:
+\begin{enumerate}
+    \item RD-253
+    \item RD-0124
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5 \textwidth]{Pictues/RSSorbitProject.png}
+    \caption{Képek a rakétáról a hangárban.}
+\end{figure}
+
+Az RD-253 hajtóművek a Proton rakéta első fokozatát alkották, egy nagyon megbízható, sokat használt
+hajtómű. A "Salyut", "Mir" programokban is alkalmazták. 2012-ben lett kivezetve, azóta a fejlesztett
+RD-275M van szolgálatban. \cite{RD-253}
+\smallskip
+
+Az RD-0124 a Soyuz rakéták harmadik fokozatát alkotja, és még a mai napig használatban van. És én is 
+ugyanarra a célra használom, ami az hogy egy felsőbb fokozatos hajtómű legyen. A hajtómű egy érdekes
+konstrukció, ugyanis egy turbópumpa van, ami négy fúvóka égésterébe pumpálja az üzemanyagot. Tehát a 
+négy fúvóka ellenére ez mégis egy hajtómű. \cite{RD-0124}
+\medskip
+
+\smallskip
+Fontos szempont volt a hajtómű választásnál, hogy a második fokozat minimum kétszer gyújtható legyen.
+Mert az RD-253, mivel első fokozatra tervezett, ezért nem számolnak azzal, hogy le lesz állítva, míg az 
+RD-0124 többször (kétszer) begyújtható a körpálya kialakítása miatt.
+
+RSS-ben a legtöbb valóságban használt kilövőállás a rendelkezésemre áll, így a Francia Guyanában 
+található Kourou kilövőállást használtam. De még az elején Cape Canaveral-nél is szórakoztam.
+\cite{OrbitProject}
+
+\subsection{Az irányítás}
+Mint azt a legelején említettem vagy kézi vagy fél automata irányítást fogok használni.\\
+Kézi KSP-ben, de csak mert az hozta a legkisebb $\Delta v_{total}$-t.\\
+És RSS-ben a \textit{MechJeb2} nevű mod segítségével egy fél automata vezérlést.\\
+
+Az eredményeket szintén a \textit{MechJeb2} rögzítette.
+
+%-------------------------------------------------------------------------------------------
+\section{Kiértékelés}
+
+A kiértékelést a számításokkal kezdem, és azután következik a kísérlet, majd az összehasonlítás,
+tanulságok levonása.
+
+\subsection{Számítások eredménye}
+
+Sok adat volt végül kiírva, segítve a hibák megtalálását ezt megtartottam a végső verzióban
+is de itt csak a legfontosabbakat fogom listázni.\footnotemark[10]
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Paraméter} & \textbf{KSP} & \textbf{RSS} & \textbf{M.egység} \\
+        \hline
+        $\Delta v_{total}$ & 3223.72 & 8930.49 & m/s \\
+        \hline
+        $\Delta v_g$ & 651.5 & 1102.75 & m/s \\
+        \hline
+        $\Delta v_H$ & 282.05 & 42.2 & m/s \\
+        \hline
+        $\gamma_f$ & 7.16 & 0.31 & fok \\
+        \hline
+        $M\%$ & 64.251 & 85.234 & \% \\
+        \hline
+    \end{tabular}
+    \caption{Fontosabb mért adatok eredménye.}
+    \label{tab:numres}
+\end{table}
+
+A számításokban azt figyeltük meg, hogy $M\%$ szélső értékhez közelít, ezért volt szükség a \textit{find\_max\_not\_NaN}
+függvényre. Mert egy bizonyos százalék felett nincs olyan $\gamma_f$ amivel az \textit{Apoapsisunk} elérné a $250\, km$-t. Ekkor a 
+\textit{brentq} hibát ad, miszerint az intervallum nem halad át a nullán.\\
+Ez azt jelenti, hogy a körpálya kialakítására szükséges $\Delta v$-t minimalizálni kell. Tehát az első gyorsítási szakasz
+közben minnél inkább késlelteni kell a kívánt \textit{Apoapsis} elérését, így minnél inkább megemelve a \textit{Periapsis}-t.\\
+Ez feltételezésem szerint akár lehet az \textit{Oberth-effektus} miatt, de ennek az igazolása nem tartozik bele a kísérlet
+kereteibe.
+
+%---------------------------------------------------------------
+\subsection{A kísérletek eredménye}
+
+Itt a \textit{MechJeb2} sokkal részletesebben bontja le a $\Delta v_{total}$-t, így az (1) egyenletben
+megemlített részek is bekerülnek. Ez egy eredmény a sok közül. Több mérést is végeztem de egyik sem 
+érte el a $\Delta v_{total} \leq 8900\, m/s$-ot.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Paraméter} & \textbf{KSP} & \textbf{RSS} & \textbf{M.egység} \\
+        \hline
+        $\Delta v_{total}$ & 3176.07 & 8956.02 & m/s \\
+        \hline
+        $\Delta v_g$ & 529.71 & 803.89 & m/s \\
+        \hline
+        $\Delta v_d$ & 109.96 & 198.37 & m/s \\
+        \hline
+        $\Delta v_{steer}$& 264.77 & 672.12 & m/s \\
+        \hline
+        $\Delta v_H$ & 96.5 & 369.9 & m/s \\
+        \hline
+        $\gamma_f$ & 1.73 & 0 & fok \\
+        \hline
+    \end{tabular}
+    \caption{Fontosabb mért adatok eredménye.}
+    \label{tab:kspres}
+\end{table}
+
+Itt a mérés módja miatt ábrák is készíthetők. Jó sok érdekes ábrát sikerült készítsek ami érdekes 
+lehet, de az összesen 14 kép lenne, így ide csak a $\Delta v$ szempontjából fontosakat rakom be.
+Ha pedig valakit érdekel a többi is, \cite{OrbitProject}-ben megtalálja. Ha pedig egyéb más
+összehasonlítást szeretne végezni akkor szintén fel lesznek töltve a csv fájlok amiket a
+\textit{MechJeb2} készített.
+
+\footnotetext[10]{Akit érdekel minden mért adat az a \cite{OrbitProject}-ben megtalálja.}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1 \textwidth]{KSP results/all\_dV(KSP).png}
+    \caption{Minden $\Delta v$ fajta.}
+    \label{fig:ksp_dV}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1 \textwidth]{KSP results/all_dV_loss(KSP).png}
+    \caption{Minden elvesztett $\Delta v$ fajta.}
+    \label{fig:ksp_dV_loss}
+\end{figure}
+
+Már a fenti \ref{fig:ksp_dV} és \ref{fig:ksp_dV_loss} KSP ábrákból is látszik, hogy a $\Delta v_d$, 
+a légellenállás $100\, m/s$-os nagyságával igazán elhanyagolható, a teljes $\approx 3200\, m/s$-hoz 
+képest. És a legnagyobb a $\Delta v_g$, mint amire számítottunk. De már itt is felüti a fejét a
+$\Delta v_{steer}$, ami abból származik, hogyha nem pontosan \textit{Prograde} irányba égetünk 
+hanem valamilyen szögben tőle. És az elvesztett $\Delta v$ onnan származik, hogy a 
+sebességvektorunkat össze kell hoznunk a haladási iránnyal. Megfigyelhető a \ref{fig:rss_dV_loss} 
+ábrán is, hogy ez a $\Delta v_{steer}$ a mozgás elején jelenik meg és egy ideig több mint a $\Delta v_g$,
+amíg a $\Delta v_{steer}$ konstanssá nem válik és végül a $\Delta v_g$ nagyobb lesz nála.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1 \textwidth]{RSS results/all_dV(RSS).png}
+    \caption{Minden $\Delta v$ fajta.}
+    \label{fig:rss_dV}
+\end{figure}
+
+\Aref{fig:rss_dV} ábrán megfigyelhető, hogy az arányok megváltoztak, míg \aref{fig:ksp_dV} ábrán
+$\Delta v_{total} \approx 3200\, m/s$, addig egyik $\Delta v$ veszteség sem jut túlságosan túl
+ az $500\, m/s$-on. Viszont \aref{fig:rss_dV} ábrán a $\Delta v_{total}$ megháromszorozódott, de a 
+$\Delta v$ veszteségek nagyjából megkétszereződtek. Ez még jobban látszik \aref{fig:ksp_dV_loss} és
+\aref{fig:rss_dV_loss} ábrák összevetésével.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1 \textwidth]{RSS results/all_dV_loss(RSS).png}
+    \caption{Minden elvesztett $\Delta v$ fajta.}
+    \label{fig:rss_dV_loss}
+\end{figure}
+
+A nagyjából megkétszereződés alól kivételt képez a $\Delta v_{steer}$, ami majdnem a fő égetési 
+szakasz egészén nagyobb, mint a $\Delta v_g$.\\
+
+\subsection{Összevetés}
+
+Az én modellemben a légellenállást elhanyagoltam, mert nehéz kiszámolni és nem akkora mértékű,
+sokkal fontosabb a $\Delta v_g$ kiszámolni \cite{Teofilatto}, \cite{eaglepubs}. Ez egy jó döntésnek bizonyult.\\
+\indent De miért is lesz ilyen kis mértékű? Mert minél előbb el akarjuk hagyni a légkört.
+Természetesen ha olyan rakétákkal számolnánk amik a Földhöz közel mozognak nagy sebességgel akkor
+ nem lehetne elhanyagolni. Még felvetülhet a kérdés: De ha minél gyorsabbak vagyunk, akkor nem vesztünk
+több $\Delta v$-t a légellenállás miatt? Ami igaz is, de ha lassan mennénk, akkor a gravitáció miatt
+vesztenénk többet, mert a $\Delta v_g$ függ az időtől \cite{eaglepubs}. És mint azt a saját adataink 
+\aref{fig:ksp_dV_loss} és \aref{fig:rss_dV_loss} ábrán mutatják a $\Delta v_g$ mindig nagyobb lesz mint
+a $\Delta v_d$. Illetve ha akarnánk sem tudnánk a legsűrűbb rétegeken túl gyorsan végig menni mert a 
+rakéták 1.2-1.8 \textit{TWR}-el kezdenek, ami temészetesen majd növekszik, de a tengerszint közeli
+szakaszon szépen "végigsétál" a rakéta mielőtt elég sebességet gyűjetene ahhoz hogy a légellenállás 
+nagyobb szerepet kapna.\\
+\indent Viszont amivel nem számoltam, hogy ekkora mértékű lesz az a $\Delta v_{steer}$.
+Tehát beszéljünk ennek a lehetséges okairól:\\ 
+\indent Mind az \cite{eaglepubs} és \cite{Teofilatto} forrás említést tesz róla de nem állítja hogy ekkora
+mértékű lenne. Én a kísérlet közben egy már az \textit{Elméleti háttér} első bekezdésében leírt módszerhez
+hasonlóan végeztem el a pályára állást:\footnotemark[11]
+\begin{enumerate}
+    \item Kis emelkedés
+    \item Bedöntés
+    \item Gravitációs forduló
+    \item Körpálya
+\end{enumerate} 
+
+\footnotetext[11]{A \cite{OrbitProject}-ben fel vannak videó is egy ilyen mérésről.}
+
+Én nem alkalmaztam külön algoritmust, hanem \textit{MechJeb2}-nek egy félautomata irányítását ahol
+én tudom állítani a dőlés mértékét, így követve egy közel optimális pályát.\\
+Így lehet, hogy a kezdeti bedőlése a \textit{MechJeb2}-nek túl erős. Viszont ha megfigyeljük az 
+eredményeket nem veszünk észre akkora különbséget. Ez lehet azért mert \citeauthor{Teofilatto}
+belekalkulálták a $\Delta v_{steer}$ a számításaikba, vagy inkább éppen jól hibás a számítás, 
+hogy ezt ellensúlyozza, de bizosra nem tudom megállapítani.
+Természetesen mivel ez csak egy szimuláció előfordulhat, hogy nem pontos, vagy éppen a \textit{MechJeb2}
+számolja rosszul a $\Delta v_{steer}$-et.
+
+%-------------------------------------
+\subsubsection*{A Bolygó forgása}
+
+Sokáig tartogattam a $\Delta v_{lat}$-öt, hogy most kedvünkre értékelhesük ki annak a hatását.\\
+A logika mögötte, hogy a Föld forog a talpunk alatt tehát van egy bizonyos kezdő kerület sebességünk
+amennyit a Föld "segít" nekünk a pályára állásban\footnotemark[12].\\
+Ahhoz hogy ezt vizualizálni tudjuk segít a következő \ref{fig:rss_speed} ábra. Figyeljül meg, hogy az
+orbitális sebesség mindig nagyobb és a felszíni sebeség a nulla. Ez a különbség amit a Föld segít.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1 \textwidth]{RSS results/speed(RSS).png}
+    \caption{Földi és Orbitális sebességek összehasonlítva.}
+    \label{fig:rss_speed}
+\end{figure}
+
+A kiszámolása:
+\begin{equation}
+    \Delta v_{lat} = v_{lat} = \omega R \cos \vartheta = \frac{2\pi R}{T} \cos \vartheta
+\end{equation}
+Ahol $R$ a bolygó sugara, $T$ egy nap a bolygón, és $\cos \vartheta$ pedig a kilövőállás
+magasságszöge\footnotemark[13]. Mivel ez mástól nem függ ezért egy konstans így
+később is le lehet vonni.\\
+Mivel KSP-ben az egyenlítőről indítottunk, RSS-ben pedig a Francia Guyana-ból indított adatokat
+értékeltük, ezért a $\cos \vartheta$ tagot szimplán elhanyagoljuk.
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Pamaméter} & \textbf{KSP} & \textbf{RSS} & \textbf{M.egység} \\
+        \hline
+        $\Delta v_{lat}$ & 174.53 & 463.31 & m/s \\
+        \hline
+    \end{tabular}
+    \caption{A bolygók forgásából származó sebesség.}
+    \label{tab:v_lat}
+\end{table} 
+
+\footnotetext[12]{Természetesen akkor ha a forgással megegyező irányba indulunk. De hát ki akarná még
+azt is leküzdeni amikor pont segítene. Ezen logikát követve a keletre indítás a konvenció.}
+
+\footnotetext[13]{Vagy Alt-szög, szélesség, vagy latitude}
+
+%-------------------------------------
+\subsubsection*{Adatok összehasonlítása}
+
+Ha az előbb kiszámolt eredményket egymás mellé rakjuk a következő táblázatot kapjuk:
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Eredménye} & \textbf{KSP} & \textbf{RSS} & \textbf{M.egység} \\
+        \hline
+        Kísérlet & 3176.07 & 8956.02 & m/s \\
+        \hline
+        Számítás & 3223.72 & 8930.49 & m/s \\
+        $ - \Delta v_{lat}$ & 3049.19 & 8467.18 & m/s \\
+        \hline
+    \end{tabular}
+    \caption{$\Delta v_{total}$ a bolygók forgását beszámítva és az eredeti eredményekkel öszehasonlítva.}
+    \label{tab:res_comp}
+\end{table}
+
+Így a számítások azt sugallják, hogy ezek a $\Delta v_{total}$ értékek elegendőek lennének a pályára álláshoz.
+De ezt kísérlettel nem tudom alátámasztani. Nem kizárt hogy KSP-ben lehetne még $\approx 150\, m/s$-ot faragni,
+de ez a Föld közel $\approx 500\, m/s$-ra már nem mondható el. De nem is feltétlen az a kérdés, hogy fizikailag
+lehetséges-e, hanem az hogy érdemes lenne egy ennyi $\Delta v_{total}$-vel rendelkező rakétát tervezni. Amire a 
+válasz, hogy nem, hiszen ezek a minimum értékek. Tehát \textit{lehet}, de a biztonság és egyéb ki nem számítható
+nehézségek és hibák miatt nem érdemes cseppre kimérni az üzemanyagot.\\
+Valamint a számítás, részben analitikus mivolta miatt bizonyos egyszerűsítéseket alkalmaz, tehát lehet azt 
+mondani, hogy a kimért adatok alapján pont annyi a hiba amennyi a $\Delta v_{lat}$ lenne.\\
+De amennyiben a játékkal játszunk, még érdemes ennek a tetejébe is egy kis plusz üzemanyagot vinni 
+$\approx 200-400\, m/s$-ot. Ezeket a $\Delta v$ térképek adatai alapján mondom, \cite{KSP_deltaV_map}, 
+\cite{RSS_deltaV_map} amiket a Kerbal Space Program közösség készített az évek alatt.
+
+%-------------------------------------
+\subsubsection*{Alternatív ötlet}
+Egyszer a kód hibás volt és úgy viselkedett ami a Hohmann módszerre emlékeztetett engem. Így jutott eszembe
+ez a megoldás.
+\medskip
+
+\noindent Mi lenne, ha Hohmann módszerrel számolnánk $\Delta v_{total}$-t?\\
+Semmi mást nem kell tennünk, mint kiszámoljuk, mennyi a kerületi sebesség $R$ magasságban, majd a 
+Hohmann módszert alkalmazva felmegyünk egy $R+h$ magasságú kör pályára.
+\smallskip
+
+Ez lenne a leghatékonyabb módja a pályára állásnak, ha nem lenne mindenféle veszteségünk, azért mert ki kell
+kerüljük a légkört, illetve fel kell emelkedjünk. Mert nem egy pillanat alatt fogunk $7.9\, km/s$-ra szert tenni.
+\smallskip
+A Python kód ezt is kiszámolja, így adódik a következő táblázat:
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{Eredménye} & \textbf{KSP} & \textbf{RSS} & \textbf{M.egység} \\
+        \hline
+        Hohmann & 2735.33 & 8134.84 & m/s \\
+        \hline
+        Hohmann + $\Delta v_g$ & 3386.82 & 9237.58 & m/s \\
+        \hline
+        Hohmann + $\Delta v_g$ - $\Delta v_{lat}$ & 3212.29 & 8774.27 & m/s \\
+        \hline
+    \end{tabular}
+    \caption{Tisztán Hohmann módszerrel a $\Delta v_{total}$, és $\Delta v_g$ beleszámolva.}
+    \label{tab:hohmann}
+\end{table}
+
+Az eredmény bíztató, mert nem kaptunk tisztán Hohmann módszer alatti értéket a számításaink-ban, ami azt jelentette volna, hogy
+hibás a számításunk. A másik két sor pedig alkalmazza az (1) gondolatmenetét, miszerint, hogyha valahogyan
+tudnánk $\Delta v_g$-t akkor a $\Delta v$ fajták összeadásával megkapjuk $\Delta v_{total}$-t. Így megint 
+csak egészen közeli értékeket kapunk a valósághoz.\footnote[14]{A $\Delta v_g$ a Python kód által megállapított érték.}
+\medskip
+
+Ha még pontosabb eredményeket akarunk kapni arra egy teljesen numerikus megközelítés, ami nem hanyagolja el a légellenállást
+és a $\Delta v_{steer}$-et megoldást nyújthat.
+
+%-------------------------------------------------------------------------------------------
+\section{Összefoglalás}
+
+A projekt célja az volt, hogy állapítsuk meg az alacsony Föld és Kerbin körüli pályára álláshoz szükséges 
+$\Delta v$-t. \citeauthor{Teofilatto} munkája alapján a pályára állás egy részét analitikusan megoldva, majd a 
+kezdőfeltételeket numerikusan hozzáigazítva a kívánt pályaadatokhoz sikerült megállapítani a Föld és
+Kerbin körüli pályára állás $\Delta v$ szükségleteit. Ezeket a körülbelüli eredményeket pedig 
+Kerbal Space Programmal sikerült alátámasztani, és visszaigazolni a közösség által ajánlott értékeket.
+
+%-------------------------------------------------------------------------------------------
+\nocite{*}
+\printbibliography
+
+\end{document}
