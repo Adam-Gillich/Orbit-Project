@@ -377,6 +377,10 @@ def main():
 
     # Iterate valid boundaries
     M_per_max = find_max_not_NaN(calc_TotalDeltaV, 1, 99)
+    
+    print("\n" * 50)
+    print(f"M_percent max = {M_per_max}")
+    input("\n Press enter to start the calculation: ")
 
     # Find optimal Trajectory
     minimize_scalar(calc_TotalDeltaV, bounds=(1, M_per_max))
