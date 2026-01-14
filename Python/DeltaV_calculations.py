@@ -379,7 +379,7 @@ def main():
     M_per_max = find_max_not_NaN(calc_TotalDeltaV, 1, 99)
     
     print("\n" * 50)
-    print(f"M_percent max = {M_per_max}")
+    print(f"M_percent max = {M_per_max:>15.3f} %")
     input("\n Press enter to start the calculation: ")
 
     # Find optimal Trajectory
