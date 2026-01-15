@@ -2,7 +2,7 @@
 
 ## Introduction
 
-There are three files uploaded, "DeltaV_calculations.py" is the program, the .yaml file is the config file, and the test.py variant is jusst a test program for the "find_max_not_NaN" fuction.
+There are three files uploaded, "DeltaV_calculations.py" is the program, the .yaml file is the config file, and the test.py variant is just a test program for the "find_max_not_NaN" fuction.
 
 If you are looking for the results look into the "Results" folder.
 
@@ -99,4 +99,5 @@ sequenceDiagram
     end
     
     MinScalar-->>Main: Return optimal result
+
 ```
